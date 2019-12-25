@@ -448,11 +448,17 @@ class TrainModel(object):
 
         """
         self.model.train()
-        self.sampler.set_mode("train")
+        self.sampler.set_mode("train") 
+        # sampler is a MultiFileSampler, which contains train and valid samplers, and optionally a test sampler
 
         inputs, targets = self._get_batch()
-        inputs = torch.Tensor(inputs)
-        targets = torch.Tensor(targets)
+
+        if self.sampler._samplers["train"]._convert_to_index:
+            inputs = torch.tensor(inputs) # transformer expects Long, not FloatTensor
+            targets = torch.tensor(targets) # so use tensor instead of Tensor to get int
+        else:
+            inputs = torch.Tensor(inputs)
+            targets = torch.Tensor(targets)
 
         if self.use_cuda:
             inputs = inputs.cuda()
@@ -460,8 +466,11 @@ class TrainModel(object):
 
         inputs = Variable(inputs)
         targets = Variable(targets)
+        if self.sampler._samplers["train"]._convert_to_index: # no transpose if input is 2D
+            predictions = self.model(inputs)
+        else: # if input is one-hot
+            predictions = self.model(inputs.transpose(1, 2))
 
-        predictions = self.model(inputs.transpose(1, 2))
         loss = self.criterion(predictions, targets)
 
         self.optimizer.zero_grad()
@@ -470,7 +479,7 @@ class TrainModel(object):
 
         return loss.item()
 
-    def _evaluate_on_data(self, data_in_batches):
+    def _evaluate_on_data(self, data_in_batches, useLongTensor=False):
         """
         Makes predictions for some labeled input data.
 
@@ -492,8 +501,12 @@ class TrainModel(object):
         all_predictions = []
 
         for (inputs, targets) in data_in_batches:
-            inputs = torch.Tensor(inputs)
-            targets = torch.Tensor(targets)
+            if useLongTensor:
+                inputs = torch.tensor(inputs) # if index format, don't convert to float
+                targets = torch.tensor(targets)
+            else:
+                inputs = torch.Tensor(inputs) # otherwise, FloatTensor
+                targets = torch.Tensor(targets)
 
             if self.use_cuda:
                 inputs = inputs.cuda()
@@ -502,8 +515,11 @@ class TrainModel(object):
             with torch.no_grad():
                 inputs = Variable(inputs)
                 targets = Variable(targets)
-
-                predictions = self.model(inputs.transpose(1, 2))
+                if self.sampler._samplers["test"]._convert_to_index: # no transpose if input is 2D
+                    predictions = self.model(inputs)
+                else: # if input is one-hot
+                    predictions = self.model(inputs.transpose(1, 2))
+                
                 loss = self.criterion(predictions, targets)
 
                 all_predictions.append(
@@ -526,7 +542,7 @@ class TrainModel(object):
 
         """
         average_loss, all_predictions = self._evaluate_on_data(
-            self._validation_data)
+            self._validation_data, useLongTensor=self.model._convert_to_index)
         average_scores = self._validation_metrics.update(all_predictions,
                                                          self._all_validation_targets)
         for name, score in average_scores.items():
@@ -550,7 +566,7 @@ class TrainModel(object):
         if self._test_data is None:
             self.create_test_set()
         average_loss, all_predictions = self._evaluate_on_data(
-            self._test_data)
+            self._test_data, useLongTensor=self.model._convert_to_index)
 
         average_scores = self._test_metrics.update(all_predictions,
                                                    self._all_test_targets)
