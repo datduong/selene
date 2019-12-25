@@ -292,7 +292,7 @@ class TokenClassificationBase (BertPreTrainedModel):
   def forward(self, x):
 
     ##!! @x in Transformer is batch x word_indexing
-    
+
     ## COMMENT: original model must take only x=batch x 4 x 1000 because @selene pipeline requires only this input
     ## default @x is DNA + label --> so it is already an embedding
     ## COMMENT convert @x into word-indexing style. so we want @x = [[1,1,2,2,...], [3,3,4,4,...]] --> batch x seq_len
@@ -301,12 +301,12 @@ class TokenClassificationBase (BertPreTrainedModel):
     # label_index_id = self.label_range.expand(real_batch_size,-1) ## batch x num_label ... 1 row for 1 ob in batch
 
     ## COMMENT use @x as indexing-style
-    ##!! observe that we pass in @x twice. this is a trick. 
+    ##!! observe that we pass in @x twice. this is a trick.
     print('transformerrr:')
     print(x[0][0:10])
     print(x.shape)
     print(x.type)
-    outputs = self.bert(None, x, x, position_ids=None, token_type_ids=None) 
+    outputs = self.bert(None, x, x, position_ids=None, token_type_ids=None)
 
     sequence_output = outputs[0][:,self.sequence_length::,:] ## last layer. ## last layer outputs is batch_num x len_sent x dim
     sequence_output = self.dropout(sequence_output)
